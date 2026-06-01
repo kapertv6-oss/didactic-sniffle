@@ -4,6 +4,8 @@ import string
 import os
 import subprocess
 
+import static_ffmpeg
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (
@@ -203,7 +205,10 @@ async def create_new_pack(message: Message):
         )
 
     except Exception as e:
-        await message.answer(f"❌ Ошибка:\n<code>{e}</code>", parse_mode="HTML")
+        await message.answer(
+            f"❌ Ошибка:\n<code>{e}</code>",
+            parse_mode="HTML"
+        )
 
     finally:
         for file in source_files:
@@ -213,6 +218,7 @@ async def create_new_pack(message: Message):
 
 
 async def main():
+    static_ffmpeg.add_paths()  # скачивает и добавляет ffmpeg в PATH
     print("Бот запущен!")
     await dp.start_polling(bot)
 
