@@ -19,15 +19,15 @@ from aiogram.types import (
 
 from PIL import Image
 
-TOKEN = "8904088638:AAH9spPx_vv77blRx3r1C60xmpu1QNk-ItU"
+TOKEN = "8904088638:AAF7UtuOl7u46VC849k5Tn0JLymuGGNklZ0"
 
-# ⚠️ Должен точно совпадать с @username бота (без @)
 BOT_USERNAME = "elhakkastickerbot"
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
 
-user_mode = {}
+# user_id -> {"mode": "sticker_pack"/"emoji_pack", "pack_name": str, "count": int}
+user_sessions = {}
 
 
 def random_pack_name():
@@ -44,11 +44,12 @@ async def cmd_start(message: Message):
         "2️⃣ Выбери тип пака:\n"
         "   • 📦 <b>Стикер Пак</b> — обычные стикеры\n"
         "   • 😀 <b>Эмодзи Пак</b> — кастомные эмодзи\n\n"
-        "3️⃣ Отправь один из вариантов:\n"
-        "   • 🖼 <b>Фото</b> — станет статичным стикером\n"
-        "   • 🎞 <b>GIF / Анимация</b> — станет анимированным стикером\n"
-        "   • 🎭 <b>Существующий стикер</b> — скопируется в новый пак\n\n"
-        "4️⃣ Готово! Бот пришлёт ссылку на твой новый пак 🎉\n\n"
+        "3️⃣ Отправляй стикеры по одному:\n"
+        "   • 🖼 <b>Фото</b> — статичный стикер\n"
+        "   • 🎞 <b>GIF / Анимация</b> — анимированный стикер\n"
+        "   • 🎭 <b>Существующий стикер</b> — копия в новый пак\n\n"
+        "4️⃣ Когда добавишь все стикеры — напиши /done\n\n"
+        "5️⃣ Бот пришлёт ссылку на готовый пак 🎉\n\n"
         "▶️ Начать: /createpack",
         parse_mode="HTML"
     )
@@ -56,6 +57,29 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("createpack"))
 async def create_pack(message: Message):
+    uid = message.from_user.id
+
+    # Если уже есть активная сессия — предупреждаем
+    if uid in user_sessions:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🗑 Начать новый", callback_data="new_pack"),
+                    InlineKeyboardButton(text="↩️ Продолжить текущий", callback_data="continue_pack")
+                ]
+            ]
+        )
+        await message.answer(
+            f"⚠️ У тебя уже есть активный пак со стикерами: {user_sessions[uid]['count']} шт.\n"
+            "Что делаем?",
+            reply_markup=kb
+        )
+        return
+
+    await show_pack_type_keyboard(message)
+
+
+async def show_pack_type_keyboard(message: Message):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -67,13 +91,64 @@ async def create_pack(message: Message):
     await message.answer("Выберите тип пака:", reply_markup=kb)
 
 
-@dp.callback_query(F.data.in_(["sticker_pack", "emoji_pack"]))
-async def select_pack(callback: CallbackQuery):
-    user_mode[callback.from_user.id] = callback.data
+@dp.callback_query(F.data == "new_pack")
+async def new_pack(callback: CallbackQuery):
+    user_sessions.pop(callback.from_user.id, None)
+    await callback.message.edit_text("Старый пак отменён. Выберите тип нового пака:")
+    await show_pack_type_keyboard(callback.message)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "continue_pack")
+async def continue_pack(callback: CallbackQuery):
+    uid = callback.from_user.id
+    count = user_sessions[uid]["count"]
     await callback.message.edit_text(
-        "Отправьте фото, GIF/анимацию или существующий стикер."
+        f"Продолжаем! В паке уже {count} стикер(ов).\n"
+        "Отправляй ещё или напиши /done чтобы завершить."
     )
     await callback.answer()
+
+
+@dp.callback_query(F.data.in_(["sticker_pack", "emoji_pack"]))
+async def select_pack(callback: CallbackQuery):
+    uid = callback.from_user.id
+    user_sessions[uid] = {
+        "mode": callback.data,
+        "pack_name": random_pack_name(),
+        "count": 0
+    }
+    await callback.message.edit_text(
+        "Отправляй фото, GIF или стикеры по одному.\n"
+        "Когда закончишь — напиши /done"
+    )
+    await callback.answer()
+
+
+@dp.message(Command("done"))
+async def done(message: Message):
+    uid = message.from_user.id
+
+    if uid not in user_sessions:
+        await message.answer("⚠️ Нет активного пака. Начни с /createpack")
+        return
+
+    count = user_sessions[uid]["count"]
+
+    if count == 0:
+        await message.answer("⚠️ Ты ещё не добавил ни одного стикера! Отправь хотя бы один.")
+        return
+
+    pack_name = user_sessions[uid]["pack_name"]
+
+    await message.answer(
+        f"✅ <b>Пак готов! Добавлено стикеров: {count}</b>\n\n"
+        f"🔗 <a href='https://t.me/addstickers/{pack_name}'>Открыть пак</a>\n\n"
+        f"📌 Ссылка: https://t.me/addstickers/{pack_name}",
+        parse_mode="HTML"
+    )
+
+    user_sessions.pop(uid, None)
 
 
 async def photo_to_sticker(file_id: str) -> str:
@@ -125,17 +200,16 @@ async def gif_to_webm(file_id: str) -> str:
 
 
 @dp.message(F.photo | F.sticker | F.animation | F.document)
-async def create_new_pack(message: Message):
+async def add_sticker(message: Message):
     uid = message.from_user.id
 
-    if uid not in user_mode:
-        await message.answer(
-            "⚠️ Сначала выберите тип пака через /createpack"
-        )
+    if uid not in user_sessions:
+        await message.answer("⚠️ Сначала создай пак через /createpack")
         return
 
-    mode = user_mode[uid]
-    pack_name = random_pack_name()
+    session = user_sessions[uid]
+    pack_name = session["pack_name"]
+    mode = session["mode"]
     pack_title = (
         "Sticker @elhakkastickerbot"
         if mode == "sticker_pack"
@@ -149,7 +223,7 @@ async def create_new_pack(message: Message):
 
     source_files = []
 
-    await message.answer("⏳ Создаю пак, подождите...")
+    await message.answer("⏳ Добавляю стикер...")
 
     try:
         if message.sticker:
@@ -190,18 +264,27 @@ async def create_new_pack(message: Message):
                 format="static"
             )
 
-        await bot.create_new_sticker_set(
-            user_id=uid,
-            name=pack_name,
-            title=pack_title,
-            stickers=[sticker]
-        )
+        # Первый стикер — создаём пак, остальные — добавляем
+        if session["count"] == 0:
+            await bot.create_new_sticker_set(
+                user_id=uid,
+                name=pack_name,
+                title=pack_title,
+                stickers=[sticker]
+            )
+        else:
+            await bot.add_sticker_to_set(
+                user_id=uid,
+                name=pack_name,
+                sticker=sticker
+            )
+
+        session["count"] += 1
+        count = session["count"]
 
         await message.answer(
-            f"✅ <b>Пак успешно создан!</b>\n\n"
-            f"🔗 <a href='https://t.me/addstickers/{pack_name}'>Открыть пак</a>\n\n"
-            f"📌 Ссылка: https://t.me/addstickers/{pack_name}",
-            parse_mode="HTML"
+            f"✅ Стикер {count} добавлен!\n"
+            "Отправь ещё или напиши /done чтобы завершить."
         )
 
     except Exception as e:
@@ -214,11 +297,10 @@ async def create_new_pack(message: Message):
         for file in source_files:
             if os.path.exists(file):
                 os.remove(file)
-        user_mode.pop(uid, None)
 
 
 async def main():
-    static_ffmpeg.add_paths()  # скачивает и добавляет ffmpeg в PATH
+    static_ffmpeg.add_paths()
     print("Бот запущен!")
     await dp.start_polling(bot)
 
