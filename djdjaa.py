@@ -19,7 +19,7 @@ from aiogram.types import (
 
 from PIL import Image
 
-TOKEN = "8904088638:AAF7UtuOl7u46VC849k5Tn0JLymuGGNklZ0"
+TOKEN = "8904088638:AAFiVP8jLvdbLbX7ugTjgl5StkNGp9c_ijM"
 
 BOT_USERNAME = "elhakkastickerbot"
 
