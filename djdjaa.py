@@ -19,7 +19,7 @@ from aiogram.types import (
 
 from PIL import Image
 
-TOKEN = "8904088638:AAFiVP8jLvdbLbX7ugTjgl5StkNGp9c_ijM"
+TOKEN = "8904088638:AAFhUvutXb6rM0cFoZnKieKK0capWPCBVL4"
 
 BOT_USERNAME = "elhakkastickerbot"
 
@@ -247,8 +247,15 @@ async def add_sticker(message: Message):
             webm_file = await gif_to_webm(file_id)
             source_files = [f"source_{file_id[:8]}.mp4", webm_file]
 
-            sticker = InputSticker(
+            # Сначала загружаем файл и получаем file_id
+            uploaded = await bot.upload_sticker_file(
+                user_id=uid,
                 sticker=FSInputFile(webm_file),
+                sticker_format="video"
+            )
+
+            sticker = InputSticker(
+                sticker=uploaded.file_id,
                 emoji_list=["😀"],
                 format="video"
             )
@@ -258,8 +265,15 @@ async def add_sticker(message: Message):
             png_file = await photo_to_sticker(fid)
             source_files = [f"source_{fid[:8]}.jpg", png_file]
 
-            sticker = InputSticker(
+            # Сначала загружаем файл и получаем file_id
+            uploaded = await bot.upload_sticker_file(
+                user_id=uid,
                 sticker=FSInputFile(png_file),
+                sticker_format="static"
+            )
+
+            sticker = InputSticker(
+                sticker=uploaded.file_id,
                 emoji_list=["😀"],
                 format="static"
             )
@@ -297,7 +311,6 @@ async def add_sticker(message: Message):
         for file in source_files:
             if os.path.exists(file):
                 os.remove(file)
-
 
 async def main():
     static_ffmpeg.add_paths()
